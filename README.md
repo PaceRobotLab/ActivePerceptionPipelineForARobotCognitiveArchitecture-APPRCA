@@ -11,6 +11,48 @@ Real-time 3D scene reconstruction and object detection pipeline integrating ZED 
 
 The pipeline takes live stereo frames from a ZED camera, reconstructs the full 3D scene using Facebook's VGGT-1B model, detects user-specified objects with Grounding DINO, segments them precisely with SAM, and visualizes the labeled point cloud in Open3D — all guided by an ADAPT goal stack that classifies each detection as `verified`, `tentative`, or `rejected`.
 
+## Live Jackal goal integration (no Nav2)
+
+`apprca_live_goal.py` connects this cognitive perception layer to the
+[`JackalsZedCamera-LiveFeed2LocalServer`](https://github.com/PaceRobotLab/JackalsZedCamera-LiveFeed2LocalServer)
+repository over Wi-Fi. The browser submits an object name, APPRCA verifies the
+target with Grounding DINO and optionally SAM, and sends semantic image-space
+guidance to the robot. Metric distance, obstacle safety, and velocity control
+remain local to the Jackal.
+
+```text
+Browser goal -> APPRCA DINO/SAM -> verified bbox -> Jackal ZED depth
+       ^                                                |
+       +--- annotated RGB + depth + status <------------+
+```
+
+This live mode intentionally does not use Nav2. It also does not use VGGT for
+motion control: VGGT reconstruction remains available through
+`vggt_guided_pipeline.py`, while the real-time approach loop uses metric ZED
+depth. VGGT coordinates are not assumed to be robot or map coordinates.
+
+### Run the APPRCA live process
+
+First start the server and `apprca_robot_bridge.py` using the instructions in
+the Jackal repository. Then, on the GPU computer:
+
+```bash
+export SERVER="ws://<SERVER_IP>:8050"
+export API_TOKEN="<same-token-as-server>"
+export CAMERA_ID="jackal-zed2i"
+export SAM_CKPT="/path/to/sam_vit_b_01ec64.pth"
+python apprca_live_goal.py
+```
+
+Open `http://<SERVER_IP>:8050/`, enter an object such as `chair`, and select
+**Start goal**. APPRCA publishes `searching`, `tentative`, or `verified`
+guidance. When the robot reports `ARRIVED`, APPRCA stops guidance and marks the
+goal completed.
+
+> The Jackal bridge starts in dry-run mode. Do not enable physical motion until
+> image-space steering, depth, LiDAR frames, emergency stop, and command timeout
+> behavior have been verified on the actual robot.
+
 ---
 
 ## Pipeline Flow
